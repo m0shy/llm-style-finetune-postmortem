@@ -1,0 +1,11 @@
+### 合并 SFT 长度可控模型的适配器 → 完整 HF 模型（2026-09-19）
+### ⚠️ 合并时不能加量化参数 ✗（官方提醒）
+### ⚠️ export_device: cpu —— 走 CPU 不占显存 ✓
+model_name_or_path: <项目目录>/Models/models/Qwen--Qwen2.5-7B-Instruct
+adapter_name_or_path: <项目目录>/LLaMA-Factory/outputs/sft_lenctl_v1
+template: qwen
+finetuning_type: lora
+export_dir: <项目目录>/Models/merged/lenctl_v1_merged
+export_size: 5
+export_device: cpu
+export_legacy_format: false

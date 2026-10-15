@@ -1,0 +1,32 @@
+### SFT 长度可控版（2026-09-19）
+### 前置：CPT v3 训练完成后，把下面 adapter_name_or_path 指向 cpt_v3 最终 checkpoint
+### 数据：dataset_lenctl_v1（4866 条 = 长度可控 2366 + 旧能力保留 2500）
+model_name_or_path: <项目目录>/Models/models/Qwen--Qwen2.5-7B-Instruct
+stage: sft
+do_train: true
+finetuning_type: lora
+lora_rank: 8
+lora_alpha: 16
+lora_dropout: 0.1
+lora_target: all
+adapter_name_or_path: <项目目录>/LLaMA-Factory/outputs/cpt_v3   # CPT v3 最终适配器（训练跑完后该目录即为成品 ✓）
+dataset: dataset_lenctl_v2
+template: qwen
+cutoff_len: 2560   # 2026-09-20：token 过滤后的安全上限（最长样本 2266 ✓ 全覆盖 300/800/1500/3000/4500 五档 ✓）
+learning_rate: 2.0e-5
+num_train_epochs: 1.0
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+max_grad_norm: 1.0
+optim: adamw_torch
+quantization_bit: 4
+double_quantization: false
+bf16: true
+warmup_ratio: 0.03
+logging_steps: 10
+save_steps: 100
+save_total_limit: 8
+output_dir: <项目目录>/LLaMA-Factory/outputs/sft_lenctl_v1
+plot_loss: false
+eval_strategy: "no"
+report_to: "none"

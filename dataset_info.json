@@ -1,0 +1,29 @@
+{
+  "lingjing_creator": {
+    "file_name": "dataset_lingjing.jsonl",
+    "formatting": "alpaca",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output"
+    }
+  },
+  "lingjing_deai": {
+    "file_name": "dataset_lingjing.jsonl",
+    "formatting": "alpaca",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output"
+    }
+  },
+  "lingjing_final": {
+    "file_name": "dataset_lingjing_final.jsonl",
+   "formatting": "alpaca",
+    "columns": {
+    "prompt": "instruction",
+    "query": "input",
+    "response": "output"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+### 合并 LoRA 到完整 HF 模型（2026-09-18）
+### ⚠️ 官方提醒：合并时**不能**加量化参数 ✗
+### ⚠️ export_device: cpu —— 合并走 CPU，不占显存 ✓（bf16 完整模型约 15GB，靠 31GB 内存扛 ✓）
+model_name_or_path: <项目目录>\Models\models\Qwen--Qwen2.5-7B-Instruct
+adapter_name_or_path: <项目目录>\LLaMA-Factory\outputs\sft_v2\checkpoint-150
+template: qwen
+finetuning_type: lora
+export_dir: <项目目录>\Models\merged\sft_v2_merged
+export_size: 5
+export_device: cpu
+export_legacy_format: false

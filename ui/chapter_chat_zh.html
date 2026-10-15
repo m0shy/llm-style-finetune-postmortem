@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>示例作品 · 章节生成台</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --line:#262b36; --txt:#e6e8ee;
+    --dim:#8b93a7; --accent:#c8524a; --accent2:#4a7fc8; --ok:#4ec97e; --warn:#d9a441;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+       font:14px/1.7 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+       display:flex;flex-direction:column;height:100vh;overflow:hidden}
+  header{padding:9px 16px;border-bottom:1px solid var(--line);
+         display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--panel)}
+  h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.5px}
+  .stat{font-size:12px;color:var(--dim);display:flex;align-items:center;gap:5px}
+  .dot{width:7px;height:7px;border-radius:50%;background:#666}
+  .dot.on{background:var(--ok);box-shadow:0 0 6px var(--ok)}
+  .dot.off{background:var(--accent)}
+  main{flex:1;display:flex;min-height:0}
+  #chat{flex:1;overflow-y:auto;padding:18px 20px;display:flex;flex-direction:column;gap:16px}
+  .msg{max-width:min(880px,93%);white-space:pre-wrap;word-break:break-word}
+  .msg.user{align-self:flex-end;background:#1f2530;border:1px solid var(--line);
+            padding:10px 14px;border-radius:12px 12px 2px 12px}
+  .msg.bot{align-self:flex-start;padding:2px 0;line-height:1.9}
+  .msg.bot .meta{font-size:11px;color:var(--dim);margin-bottom:6px}
+  .msg.bot .body{font-size:15px;line-height:1.95;letter-spacing:.2px}
+  .msg.err{align-self:flex-start;color:var(--accent);font-size:13px}
+  footer{border-top:1px solid var(--line);background:var(--panel);padding:10px 16px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+  label{font-size:12px;color:var(--dim)}
+  select,input[type=number],input[type=text]{background:#11141a;color:var(--txt);
+        border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:12px}
+  input[type=number]{width:62px}
+  input[type=text]{width:190px}
+  textarea{width:100%;min-height:78px;max-height:300px;resize:vertical;background:#11141a;
+           color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:10px 12px;
+           font:14px/1.7 inherit;outline:none}
+  textarea:focus{border-color:var(--accent2)}
+  .btns{display:flex;gap:10px;align-items:center;margin-top:8px}
+  button{background:var(--accent);color:#fff;border:0;border-radius:7px;
+         padding:8px 20px;font-size:13px;cursor:pointer;font-weight:500}
+  button:hover{filter:brightness(1.12)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.ghost{background:#232936;color:var(--txt)}
+  .tip{font-size:12px;color:var(--dim);margin-left:auto}
+  .warn{color:var(--warn)}
+</style>
+</head>
+<body>
+<header>
+  <h1>示例作品 · 章节生成台</h1>
+  <span class="stat"><span class="dot" id="dot"></span><span id="stxt">正在检查服务…</span></span>
+  <span class="stat" id="info"></span>
+</header>
+
+<main><div id="chat">
+  <div class="msg bot"><div class="meta">说明</div><div class="body">
+本页面连的是 llama.cpp 服务（纯 CPU 推理，稳定不崩 ✓）。<br><br>
+<b>章节模式</b>：把章级大纲粘进来 → 自动套上写作规则 + 示例专名表 → 分幕生成后合并。<br>
+<span class="warn">大纲要写足约 1000 字</span>，太短模型会自己编。<br><br>
+<b>对话模式</b>：随便聊，不加任何规则。
+  </div></div>
+</div></main>
+
+<footer>
+  <div class="row">
+    <label>服务地址</label><input type="text" id="api" value="http://127.0.0.1:8001">
+    <label>模式</label>
+    <select id="mode">
+      <option value="chapter">章节模式（给大纲 → 出正文）</option>
+      <option value="chat">对话模式（随便聊）</option>
+    </select>
+    <label>分幕</label><input type="number" id="beats" value="3" min="1" max="8">
+    <label>章号</label><input type="number" id="chapter" value="1" min="1">
+    <label>每幕上限</label><input type="number" id="maxtok" value="1100" min="100" max="3000">
+    <span class="tip" id="tip">章节模式约 4~5 分钟出一章</span>
+  </div>
+  <textarea id="input" placeholder="章节模式：把章级大纲粘到这里（建议 1000 字，逐拍写清谁做了什么、关键台词、场景、转折、本章爽点）&#10;对话模式：随便问。"></textarea>
+  <div class="btns">
+    <button id="send">开始生成</button>
+    <button class="ghost" id="stop" disabled>停止</button>
+    <button class="ghost" id="clear">清空</button>
+  </div>
+</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+let ctrl = null;
+
+// —— 与训练一致的写作规则（照抄自 SFT 数据 ✗ 别改写）——
+const 规则 = `你在续写一部番茄平台的都市暗线游戏题材商业网文。番茄口径：节奏 > 文笔，冲突 > 铺垫，落地 > 内耗。
+
+【开篇】前 300 字出核心冲突；1000 字内出首个爽点；禁大段世界观科普，世界观只由人物行动带出。
+【节奏】动作交锋、关键对白、转折揭晓放慢写细；赶路、吃饭、已交代信息一笔带过。
+【心理】情绪一律外化为动作与微表情，禁直陈；内心戏不得超过半页。
+【克制动笔】情绪只准用动作、对白、留白承载。严禁出现「心里一酸/心中一暖/感到/意识到/明白了/松了一口气」这类把情绪说破的词；严禁「小心翼翼地/淡淡地/深深地」这类副词；少用比喻（仿佛/宛如/犹如/像是/好像）；不要每段都摆排比与升华的架子。
+【禁 AI 腔套话】严禁这些网文 AI 高频词：嘴角勾起、嘴角上扬、眼神深邃、眼中闪过一丝、微微挑眉、沉吟片刻、心中一凛、心中一沉、心中一动、心下了然、顿时、瞬间、愈发、略微、一时之间。严禁形容词堆叠却不给实指。严禁连续三句以上用同一个句式起头。
+【收尾】每幕收尾留钩（对话中断/动作中断/信息不对称/金句），但严禁提前写出后续情节。
+【禁令】禁圣母、禁憋屈、禁降智、禁注水、禁设定倾倒、禁反派死于话多、禁战力崩坏、禁破折号、禁"欲知后事如何"。
+【归因安全】一切异常必须可归因于游戏机制/组织/能量规则，严禁写成鬼神显灵。
+【禁网络符号】严禁颜文字、表情符号、特殊符号、网络缩写与英文单词；人物一律用中文口语说话。
+【逐条落实】给出的每个情节要点都要落到正文，包括人物的回忆与联想，不得遗漏。
+【不得增删】不得新增要点之外的转折或结局，不得编造原文没有的动作。
+【禁解剖心理】不得出现自我解说式的心理分析（如"这个不重要，重要的是…"）。
+【细节自生】环境、光影、声音、气味等细节须自行铺陈，不得只把要点换个说法。
+【输出】只输出正文。**绝对不要输出标题、章节号、字数统计、时间戳、分隔线或任何标记**，直接以下一个自然段开始。`;
+
+const 专名 = `【本作专名·只能用这些名字】示例角色1、示例角色2、示例角色3`;
+
+const 书名 = '示例作品';
+
+// —— 广告过滤：语料中混有站点水印需过滤，模型学会了会吐出来 ✗ ——
+const 广告 = /(请记住本书|记住本书首发|示例水印词1|示例水印词2|手机版更新|手机用户请浏览|示例水印词3|无弹窗|免费阅读|全文阅读|请记住本站|[A-Za-z0-9\-]{3,}\.(?:com|net|org|cc|cn|xyz|top|vip|la|me)\b)/;
+function 过滤广告(t){
+  return t.split('\n').filter(ln => !(广告.test(ln) && (ln.length < 90 || (ln.match(/。/g)||[]).length <= 2)))
+          .map(ln => ln.replace(广告, '')).join('\n');
+}
+
+function 分幕(text, n){
+  const paras = text.split(/\n+/).map(s=>s.trim()).filter(Boolean);
+  if (paras.length >= n){
+    const size = Math.ceil(paras.length / n), out = [];
+    for (let i=0;i<paras.length && out.length<n;i+=size) out.push(paras.slice(i,i+size).join(''));
+    return out;
+  }
+  const sents = text.split(/(?<=[。！？；])/).map(s=>s.trim()).filter(Boolean);
+  if (!sents.length) return Array(n).fill(text.trim());
+  const size = Math.ceil(sents.length/n), out=[];
+  for (let i=0;i<sents.length && out.length<n;i+=size) out.push(sents.slice(i,i+size).join(''));
+  return out;
+}
+
+async function 探查(){
+  try{
+    const r = await fetch($('api').value.replace(/\/$/,'') + '/health', {cache:'no-store'});
+    const d = await r.json();
+    $('dot').className = 'dot on';
+    $('stxt').textContent = '服务正常';
+    $('info').textContent = d.status === 'ok' ? '模型已加载 ✓' : '';
+  }catch(e){
+    $('dot').className = 'dot off';
+    $('stxt').textContent = '连不上 —— 先在命令行启动 llama-server';
+    $('info').textContent = '';
+  }
+}
+探查(); setInterval(探查, 15000);
+
+function 加消息(role, text){
+  const d = document.createElement('div');
+  d.className = 'msg ' + role;
+  if(role === 'bot'){
+    const m = document.createElement('div'); m.className='meta'; m.textContent='模型';
+    const b = document.createElement('div'); b.className='body'; b.textContent=text;
+    d.appendChild(m); d.appendChild(b);
+  }else{
+    d.textContent = text;
+  }
+  $('chat').appendChild(d);
+  $('chat').scrollTop = $('chat').scrollHeight;
+  return d;
+}
+
+async function 生成一段(prompt, maxtok, 回调){
+  const body = {model:'示例作品', messages:[{role:'user',content:prompt}],
+                max_tokens: maxtok, temperature:0.8, top_p:0.9,
+                repeat_penalty:1.15, stream:true, cache_prompt:false};
+  const r = await fetch($('api').value.replace(/\/$/,'') + '/v1/chat/completions', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    signal: ctrl.signal, body: JSON.stringify(body)
+  });
+  if(!r.ok) throw new Error('服务返回 ' + r.status);
+  const rd = r.body.getReader(); const dec = new TextDecoder();
+  let buf = '', out = '';
+  while(true){
+    const {done, value} = await rd.read(); if(done) break;
+    buf += dec.decode(value, {stream:true});
+    const lines = buf.split('\n'); buf = lines.pop();
+    for(const ln of lines){
+      if(!ln.startsWith('data:')) continue;
+      const s = ln.slice(5).trim(); if(s === '[DONE]') continue;
+      try{
+        const j = JSON.parse(s);
+        const dl = j.choices && j.choices[0] && j.choices[0].delta;
+        if(dl && dl.content){ out += dl.content; 回调(out); }
+      }catch(e){}
+    }
+  }
+  return out;
+}
+
+async function 发送(){
+  const text = $('input').value.trim();
+  if(!text) return;
+  const 模式 = $('mode').value;
+  加消息('user', text);
+  $('input').value = '';
+  $('send').disabled = true; $('stop').disabled = false;
+  ctrl = new AbortController();
+  const 容器 = 加消息('bot', '');
+  const 正文 = document.createElement('div'); 正文.className='body';
+  容器.appendChild(正文);
+  const t0 = Date.now();
+
+  try{
+    if(模式 === 'chat'){
+      正文.textContent = '（生成中…）';
+      const out = await 生成一段(text, 800, t => {
+        正文.textContent = 过滤广告(t);
+        $('chat').scrollTop = $('chat').scrollHeight;
+      });
+      容器.querySelector('.meta').textContent =
+        '模型 · ' + ((Date.now()-t0)/1000).toFixed(0) + ' 秒 · ' + 过滤广告(out).length + ' 字';
+      return;
+    }
+
+    // 章节模式：分幕 + 逐幕拼规则 + 合并
+    const 幕 = 分幕(text, +$('beats').value);
+    let 累积 = '';
+    for(let i=0;i<幕.length;i++){
+      正文.textContent = 过滤广告(累积) + `\n\n【正在生成第 ${i+1}/${幕.length} 幕…】`;
+      const inp = 专名 + '\n\n==== 本次要写 ====\n'
+        + `《${书名}》第${$('chapter').value}章（本次只写这一幕的第 ${i+1}/${幕.length} 段，不要写完整章）\n`
+        + `章级大纲：${幕[i]}\n本章爽点闭环：（见章级大纲）\n`;
+      const seg = await 生成一段(规则 + '\n\n' + inp, +$('maxtok').value, t => {
+        正文.textContent = 过滤广告(累积 + '\n\n' + t);
+        $('chat').scrollTop = $('chat').scrollHeight;
+      });
+      累积 += (累积 ? '\n\n' : '') + seg;
+    }
+    const 成品 = 过滤广告(累积);
+    正文.textContent = 成品;
+    容器.querySelector('.meta').textContent =
+      `模型 · ${幕.length} 幕 · ${((Date.now()-t0)/1000).toFixed(0)} 秒 · ${成品.length} 字`;
+  }catch(e){
+    if(e.name === 'AbortError') 正文.textContent += '\n\n（已停止）';
+    else 正文.textContent = '✗ 出错：' + e.message;
+  }finally{
+    $('send').disabled = false; $('stop').disabled = true; ctrl = null;
+  }
+}
+
+$('send').onclick = 发送;
+$('stop').onclick = () => { if(ctrl) ctrl.abort(); };
+$('clear').onclick = () => { $('chat').innerHTML = ''; };
+$('api').addEventListener('change', 探查);
+$('input').addEventListener('keydown', e => {
+  if((e.ctrlKey || e.metaKey) && e.key === 'Enter') 发送();
+});
+</script>
+</body>
+</html>

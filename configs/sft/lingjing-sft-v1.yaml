@@ -1,0 +1,62 @@
+### LLaMA-Factory 训练配置 · Qwen2.5-7B-Instruct 小说创作微调
+### 数据集：dataset_lingjing_final.jsonl（240 条，v3 直接创作者范式）
+### 用法：llamafactory-cli train configs/sft/lingjing-sft-v1.yaml
+
+### 模型
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+trust_remote_code: true
+
+### 训练阶段
+stage: sft
+do_train: true
+finetuning_type: lora
+lora_rank: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target: all
+
+### 量化（QLoRA 4-bit，商品级消费显卡可跑）
+quantization_bit: 4
+quantization_method: bnb
+double_quantization: true
+
+### 数据集
+dataset: lingjing_creator
+dataset_dir: data
+template: qwen
+cutoff_len: 4096
+overwrite_cache: true
+preprocessing_num_workers: 4
+
+### 输出
+output_dir: saves/Qwen2.5-7B-LoRA-lingjing
+logging_steps: 5
+save_steps: 50
+save_total_limit: 3
+plot_loss: true
+overwrite_output_dir: true
+
+### 训练超参（小样本 240 条，防过拟合：Epoch 2–3）
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+learning_rate: 1.0e-4
+num_train_epochs: 3.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+gradient_checkpointing: true
+max_grad_norm: 1.0
+
+### 验证与防遗忘
+val_size: 0.05
+per_device_eval_batch_size: 1
+eval_strategy: steps
+eval_steps: 25
+load_best_model_at_end: true
+metric_for_best_model: loss
+greater_is_better: false
+### 若灾难性遗忘探针失败：num_train_epochs 降至 2.0，并在 data/lingjing_creator/dataset_info.json
+### 中追加 5–10% 通用对话语料做 replay（防 P1 日常对话 / P4 公文能力退化）。
+
+### 生成（推理超参，与 Golden Benchmark 对齐）
+### 建议推理参数：temperature 0.7 / top_p 0.9 / repetition_penalty 1.1 / max_new_tokens 1024

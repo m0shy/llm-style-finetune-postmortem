@@ -1,0 +1,71 @@
+### LLaMA-Factory 训练配置 · Qwen2.5-7B-Instruct 专书写作（v1 重训）
+### 硬件：RTX 4060 Laptop 8GB → 必须 QLoRA 4bit + batch1 + 梯度检查点
+### 数据：dataset_lingjing_v3.jsonl（240 条 = 10 种指令 × 4 条硬约束）
+### 关键修复：指令多样化 / 去"多用短句" / 收敛 LoRA target / epoch2 / lr5e-5 / 加验证早停
+### 用法：llamafactory-cli train configs/sft/lingjing-v1.yaml
+
+### 模型（本地）
+model_name_or_path: <项目目录>\Models\models\Qwen--Qwen2.5-7B-Instruct
+trust_remote_code: true
+
+### 阶段
+stage: sft
+do_train: true
+finetuning_type: lora
+
+### —— LoRA：8GB 显存 + 240 条小数据，务必"小而稳" ——
+lora_rank: 8
+lora_alpha: 16
+lora_dropout: 0.1
+lora_target: q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj
+use_rslora: false
+
+### —— QLoRA 4bit（8GB 必需） ——
+quantization_bit: 4
+quantization_method: bnb
+double_quantization: false   # 2026-09-16 全局修缮：True 在本环境（Windows+4060+bnb0.50.2）会触发 CUDA 越界
+
+### 数据
+dataset: lingjing_v3
+dataset_dir: <项目目录>\LLaMA-Factory\data
+template: qwen
+cutoff_len: 1536
+overwrite_cache: true
+preprocessing_num_workers: 4
+packing: false
+
+### 输出
+output_dir: <项目目录>\LLaMA-Factory\outputs\v1_lingjing
+logging_steps: 5
+save_steps: 100
+save_total_limit: 2
+plot_loss: true
+overwrite_output_dir: true
+report_to: none
+
+### —— 训练超参（8GB 实测安全区） ——
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+learning_rate: 5.0e-5
+num_train_epochs: 3.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.03
+bf16: true
+fp16: false
+gradient_checkpointing: true
+max_grad_norm: 1.0
+optim: adamw_torch
+
+### —— 验证与早停（防训过头） ——
+val_size: 0.08
+per_device_eval_batch_size: 1
+eval_strategy: steps
+eval_steps: 20
+save_strategy: steps
+load_best_model_at_end: true
+metric_for_best_model: loss
+greater_is_better: false
+
+### 推理（训练后必须带重复惩罚，否则复读）
+###   temperature 0.8 / top_p 0.9 / top_k 40
+###   repetition_penalty 1.15~1.3 / no_repeat_ngram_size 4 / max_new_tokens 1024

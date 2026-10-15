@@ -1,0 +1,80 @@
+### LLaMA-Factory 训练配置 v2 · Qwen2.5-7B-Instruct 小说创作
+### 修复要点：降 epoch / 收敛 target / 降 lr / 加 dropout / 加 eval 早停 / 混通用语料防遗忘
+### 用法：llamafactory-cli train configs/sft/lingjing-sft-v2.yaml
+
+### 模型
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+trust_remote_code: true
+
+### 训练阶段
+stage: sft
+do_train: true
+finetuning_type: lora
+
+### —— 关键修复 1：LoRA 不再 all，收敛到注意力+MLP 投影层，降 rank ——
+lora_rank: 8
+lora_alpha: 16
+lora_dropout: 0.1                 # v1 是 0.05，加大正则
+lora_target: q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj
+use_rslora: false
+
+### 量化
+quantization_bit: 4
+quantization_method: bnb
+double_quantization: true
+
+### —— 关键修复 2：数据集加"通用语料 replay"，防灾难性遗忘 ——
+### 需在 data/dataset_info.json 注册两个数据集（见文末 manifest），
+### 并把通用中文 SFT 集放到 data/general_replay.jsonl（alpaca 格式，500~2000 条即可）
+dataset: lingjing_creator_v2,general_replay
+dataset_dir: data
+template: qwen
+cutoff_len: 4096
+overwrite_cache: true
+preprocessing_num_workers: 4
+
+### 输出
+output_dir: saves/Qwen2.5-7B-LoRA-lingjing-v2
+logging_steps: 5
+save_steps: 50
+save_total_limit: 3
+plot_loss: true
+overwrite_output_dir: true
+
+### —— 关键修复 3：Epoch 1~2 + 低 lr + 早停 ——
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+learning_rate: 5.0e-5              # v1 是 1e-4，砍半
+num_train_epochs: 2.0              # v1 是 3，先跑 2；若探针仍退化降到 1.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.03
+bf16: true
+gradient_checkpointing: true
+max_grad_norm: 1.0
+
+### —— 关键修复 4：加验证集 + 早停，不要盲训到底 ——
+val_size: 0.08
+per_device_eval_batch_size: 1
+eval_strategy: steps
+eval_steps: 20
+save_strategy: steps
+load_best_model_at_end: true
+metric_for_best_model: loss
+greater_is_better: false
+early_stopping_patience: 3
+
+### —— 生成（推理）参数：必须带重复惩罚，否则复读 ——
+### 本地 vLLM / ollama / LM Studio 均支持：
+###   temperature=0.8  top_p=0.9  top_k=40
+###   repetition_penalty=1.15~1.3
+###   no_repeat_ngram_size=4
+###   max_new_tokens=1024   stop=["\n\n\n"]
+### 若仍复读：repetition_penalty 提到 1.3，temperature 提到 0.9
+
+### data/dataset_info.json 需新增：
+### {
+###   "lingjing_creator_v2": { "file_name": "dataset_lingjing_v2.jsonl", "formatting": "alpaca",
+###     "columns": {"prompt": "instruction", "query": "input", "response": "output"} },
+###   "general_replay": { "file_name": "general_replay.jsonl", "formatting": "alpaca",
+###     "columns": {"prompt": "instruction", "query": "input", "response": "output"} }
+### }
