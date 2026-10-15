@@ -25,8 +25,26 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - name: Check markdown links (relative links only)
-        uses: gaurav-nelson/github-action-markdown-link-check@d53a906aa6b22b8979d33bc86170567e619495ec
-        with:
-          check-modified-files-only: "yes"
-          config-file: .github/mlc_config.json
+      - name: Check relative markdown links
+        run: |
+          python - <<'PYEOF'
+          import os, re, sys
+          bad = []
+          for dp, _, fs in os.walk('.'):
+              if '.git' in dp:
+                  continue
+              for fn in fs:
+                  if not fn.endswith('.md'):
+                      continue
+                  p = os.path.join(dp, fn)
+                  text = open(p, encoding='utf-8').read()
+                  for m in re.finditer(r'\[[^\]]*\]\(([^)]+)\)', text):
+                      t = m.group(1).split('#')[0]
+                      if not t or t.startswith(('http://', 'https://', 'mailto:')):
+                          continue
+                      if not os.path.exists(os.path.normpath(os.path.join(dp, t))):
+                          bad.append(p + ': ' + t)
+          print('
+'.join(bad) or 'all relative links OK')
+          sys.exit(1 if bad else 0)
+          PYEOF
